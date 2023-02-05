@@ -3,6 +3,81 @@
 2) Из epel установить spawn-fcgi и переписать init-скрипт на unit-файл. Имя сервиса должно также называться.
 3) Дополнить Āнит-файл apache httpd возможностью запустить несколько инстансов сервера с разными конфигами
 
+### 1 создаём файл с конфигурацией 
+```
+[root@otuslinux ~]# cat /etc/sysconfig/watchlog
+# Configuration file for my watchlog service
+# Place it to /etc/sysconfig
+
+# File and word in that file that we will be monit
+WORD="ALERT"
+LOG=/var/log/watchlog.log
+```
+создаем watchlog.log с ключевым словом 'ALERT'
+```
+[root@otuslinux ~]# cat /var/log/watchlog.log
+ALERT
+ALERT
+ALERT
+```
+Создаем скрипт:
+```
+[root@otuslinux ~]# cat /opt/watchlog.sh
+#!/bin/bash
+
+WORD=$1
+LOG=$2
+DATE=`date`
+
+if grep $WORD $LOG &> /dev/null
+then
+logger "$DATE: I found word, Master!"
+else
+exit 0
+fi
+```
+и добавим права на запуск файла:
+```
+[root@otuslinux ~]# chmod +x /opt/watchlog.sh
+```
+создаем два юнита, первый для сервиса, второй для таймера
+```
+[root@otuslinux ~]# cat /etc/systemd/system/watchlog.service
+[Unit]
+Description=My watchlog service
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/sysconfig/watchlog
+ExecStart=/opt/watchlog.sh $WORD $LOG
+
+[Install]
+WantedBy=multi-user.target
+
+[root@otuslinux ~]# cat /etc/systemd/system/watchlog.timer 
+[Unit]
+Description=Run watchlog script every 30 second
+
+[Timer]
+# Run every 30 second
+OnUnitActiveSec=30
+Unit=watchlog.service
+
+[Install]
+WantedBy=multi-user.target
+```
+Запуск и статус
+```
+[root@otuslinux ~]# systemctl start watchlog.timer
+[root@otuslinux ~]# systemctl status watchlog.timer
+● watchlog.timer - Run watchlog script every 30 second
+   Loaded: loaded (/etc/systemd/system/watchlog.timer; enabled; vendor preset: disabled)
+   Active: active (elapsed) since Sat 2023-02-04 16:11:59 UTC; 20h ago
+  Trigger: n/a
+
+Feb 04 16:11:59 otuslinux systemd[1]: Started Run watchlog script every 30 second.
+```
+
 ### 2 Устанавливаем spawn-fcgi и необходимые для него пакеты:
 ```
 [root@otuslinux ~]# yum install epel-release -y && yum install spawn-fcgi php php-cli mod_fcgid httpd -y
@@ -96,6 +171,3 @@ EnvironmentFile=/etc/sysconfig/httpd-%I
 tcp   LISTEN 0      128                *:8080            *:*    users:(("httpd",pid=27685,fd=4),("httpd",pid=27684,fd=4),("httpd",pid=27683,fd=4),("httpd",pid=27680,fd=4))
 tcp   LISTEN 0      128                *:80              *:*    users:(("httpd",pid=27463,fd=4),("httpd",pid=27462,fd=4),("httpd",pid=27461,fd=4),("httpd",pid=27458,fd=4))
 ```
-
-
-
